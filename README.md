@@ -5,6 +5,7 @@
 
 **Stan** is a privacy-first, autonomous AI assistant built on the **Standardized Web Agent Protocol (SWAP)**. Unlike cloud-based chatbots, Stan runs entirely on your hardware and connects directly to your local ecosystem.
 
+- **Formal specification:** [protocol.md](/public/protocol.md) – covering the 10 core enclaves of the protocol.
 - **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
 - **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
 - **WebGPU Powered:** Leverages your GPU for native-speed inference using WebLLM.

@@ -23,7 +23,10 @@ export default function LandingApp() {
             <circle cx="42" cy="50" r="5" fill="currentColor"/>
             <circle cx="58" cy="50" r="5" fill="currentColor"/>
           </svg>
-          <span className="text-xl tracking-tight hidden sm:block">Stan</span>
+          <div className="flex flex-col">
+            <span className="text-xl tracking-tight hidden sm:block leading-none">Stan</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-mono hidden sm:block mt-0.5">SWAP Protocol</span>
+          </div>
         </div>
         <div className="pointer-events-auto flex items-center gap-4">
           <a 

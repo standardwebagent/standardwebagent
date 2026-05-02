@@ -1,6 +1,6 @@
 {
   "name": "Stan",
-  "description": "A local-first, privacy-focused personal AI assistant using WebGPU and the Model Context Protocol (MCP).",
+  "description": "A local-first, privacy-focused personal AI assistant built on the SWAP Protocol, using WebGPU and MCP.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
