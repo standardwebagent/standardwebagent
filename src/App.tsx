@@ -46,6 +46,7 @@ export default function App() {
     return stored ? JSON.parse(stored) : DEFAULT_MODELS;
   });
   const [newModelId, setNewModelId] = useState('');
+  const [newModelName, setNewModelName] = useState('');
   const [mcpServers, setMcpServers] = useState<string[]>(() => {
     const stored = localStorage.getItem('swap_mcp_servers');
     return stored ? JSON.parse(stored) : [];
@@ -356,7 +357,11 @@ export default function App() {
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
             <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 shadow-lg">
-              <Cpu size={32} className="text-emerald-400" />
+              <svg className="w-10 h-10" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="20" y="30" width="60" height="40" rx="6" fill="white" fillOpacity="0.05" stroke="white" strokeOpacity="0.3" strokeWidth="2.5" />
+                <circle cx="42" cy="50" r="5" fill="var(--accent)" />
+                <circle cx="58" cy="50" r="5" fill="#00a3ff" />
+              </svg>
             </div>
             <h2 className="text-xl font-semibold mb-2">Stan is here.</h2>
             <p className="text-sm text-white/50 mb-8 leading-relaxed">

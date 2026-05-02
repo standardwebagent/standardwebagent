@@ -1,78 +1,48 @@
-# Standardized Web Agents Protocol
+# Stan — Local-First Personal AI Assistant
 
 [![SWAP Conformance](https://img.shields.io/badge/SWAP-Conformance-blue)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Spec: CC BY-SA 4.0](https://img.shields.io/badge/Spec-CC%20BY--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 
-**SWAP** (Standardized Web Agents Protocol) is an open specification for local-first, privacy-preserving autonomous AI agents. This repository contains:
+**Stan** is a privacy-first, autonomous AI assistant built on the **Standardized Web Agent Protocol (SWAP)**. Unlike cloud-based chatbots, Stan runs entirely on your hardware and connects directly to your local ecosystem.
 
-- Formal specification (`protocol.md`) – covering storage, identity, intelligence, compliance, and more.
-- Reference implementation (`swap-agent.html`) – the Standardized Web Agent.
+- **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
+- **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
+- **WebGPU Powered:** Leverages your GPU for native-speed inference using WebLLM.
 
-The reference agent runs entirely in your browser using WebGPU, OPFS / PGlite for vector memory, and a ReAct loop. **No cloud, no API keys, no data leakage.**
-
-### Why SWAP is a Paradigm Shift
-SWAP defines a complete breakaway from centralized AI architectures, bringing **enterprise-grade autonomy entirely to the edge**.
-1. **Zero Data Leakage:** Data cannot leave the device—there are no server endpoints.
-2. **Infinite Scale, Zero Marginal Cost:** Since execution happens on user hardware, hosting 10 users costs the same as hosting 10 million.
-3. **True Ownership:** Users hold cryptographic keys to their agent's memories within their personal Origin.
-4. **Local Hardware Acceleration:** Leverages WebGPU and WASM to run multi-gigabyte models at native speeds.
-
-This agent is a fully autonomous, 100% local, in-browser AI built entirely with web technologies. 
-Everything runs directly on your device using WebGPU, meaning it is completely private and requires no server-side API calls once the model weights are downloaded.
+### Why Stan is Different
+Stan isn't just a chat interface; he is an **agent** designed for autonomy:
+1. **Total Privacy:** Your data never leaves your device.
+2. **Zero Marginal Cost:** Since execution happens locally, there are no token fees or subscription costs.
+3. **Local Action:** Using MCP, Stan can actually "do" things—read your local files, check your calendar, or search your private databases.
+4. **Offline-First:** Once loaded, Stan can function without an active internet connection.
 
 ---
 
-## 🚀 Quick Start (Open Source)
+## 🚀 Quick Start
 
-1. Open `swap-agent.html` in a **WebGPU-compatible browser** (Chrome 113+, Edge, or Chrome on Android).
-2. Wait for the initial model download (~1.3 GB for Gemma 2B – cached for future use).
-3. Start chatting. The agent remembers your conversation across page reloads.
+1. Visit the **Stan Agent** in a **WebGPU-compatible browser** (Chrome 113+, Edge).
+2. Wait for the initial model download (cached for future use).
+3. **Connect your tools:** Go to Settings ⚙️ and add your local MCP server URLs (e.g., `http://localhost:3000/sse`).
 
-### Test memory
-- Type: `My name is Alex`
-- Then: `What is my name?` → The agent replies `Alex`.
+## 🧠 Capabilities
 
-### Upload a file (RAG)
-- Click the 📎 button, select a `.txt` or `.md` file.
-- Ask questions about its content.
-
-### Model selection
-Choose from three models in the header dropdown:
-- 🚀 **Gemma 2B** (default, 8K context, balanced)
-- ⚡ **SmolLM 1.7B** (fastest, ideal for mobile)
-- 🧠 **Llama 3.2 3B** (most capable, heavier)
-
----
-
-## 🧠 Open Core Model
-
-The **Standardized Web Agent** reference implementation is open source under the MIT license. It includes all core enclaves and is free for any use – personal, research, or even commercial.
-
-Here is a breakdown of what it can do:
+**MCP Tool Use**
+Stan can dynamically discover and invoke tools provided by any MCP-compliant server. This allows him to interact with your local environment safely.
 
 **Autonomous Reasoning**
-Instead of just responding directly, the agent runs in a loop (up to 10 steps).
-When you give it a task, it can think step-by-step and decide to use various tools to gather information before giving you a final answer.
+Stan runs in an autonomous loop (up to 15 steps), allowing him to think, use tools, search memory, and gather information before completing a task.
 
-**Built-in Tools**
-The agent has access to several tools it can invoke during its reasoning loop:
+**Local Vector Memory (RAG)**
+Using an embedded **PGlite** (Postgres WASM) database with vector extensions, Stan stores your notes and documents locally.
+- **Document Ingestion:** Drag and drop `.txt` or `.md` files to build a local knowledge base.
+- **Semantic Recall:** Stan automatically retrieves relevant context from past conversations and documents.
 
-- **Web Fetching**: It can scrape and read text from a given URL to gather real-time information (limited by standard browser CORS policies).
-- **Calculator**: It can evaluate mathematical expressions using a secure sandbox to ensure accurate math.
-- **Note Taking**: It can intentionally save specific notes or facts to its memory if it thinks they will be useful later.
-- **Memory Search**: It can query its own database to retrieve past context or read documents.
+**High-Performance Local Models**
+Choose your engine:
+- 🚀 **Gemma 2B** (Balanced, default)
+- ⚡ **SmolLM 1.7B** (Fastest)
+- 🧠 **Llama 3.2 3B** (Most capable)
 
-**Local Long-Term Memory (RAG)**
-The app uses an embedded PostgreSQL database (pglite) compiled to WebAssembly, complete with the pgvector extension.
-
-- **Document Ingestion**: You can upload .txt, .json, or .md files using the paperclip icon. The app chunks the text, locally embeds it using Transformers.js, and stores it in the vector database.
-- **Semantic Search**: As you chat, the agent can search its vector database to recall past conversations, retrieve your saved notes, or answer questions based on the documents you've uploaded.
-
-**Switchable Local Models**
-You can swap between lightweight local models like Gemma 2B, SmolLM 1.7B, and Llama-3.2 3B seamlessly using the dropdown in the header.
-
-In short, it acts as a private, self-contained mini-assistant that can read files, do math, browse text pages, and remember things over time without your data ever leaving your browser.
 
 Contributions to the protocol specification or reference implementation are welcome. Please open an issue or pull request.
 

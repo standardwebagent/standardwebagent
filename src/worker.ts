@@ -53,7 +53,7 @@ async function syncMcp(urls: string[]) {
     if (!mcpClients.has(url)) {
       try {
         const transport = new SSEClientTransport(new URL(url));
-        const client = new Client({ name: "Stan-Browser-Agent", version: "1.0.0" }, { capabilities: { tools: {} } });
+        const client = new Client({ name: "Stan-Browser-Agent", version: "1.0.0" }, { capabilities: {} });
         await client.connect(transport);
         mcpClients.set(url, client);
         self.postMessage({ type: 'PROGRESS', data: `Connected MCP: ${url}` });
