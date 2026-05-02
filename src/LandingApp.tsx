@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
-import { Terminal, Shield, Cpu, ExternalLink, Activity, ArrowRight, Github, CloudOff } from 'lucide-react';
+import { Terminal, Shield, Cpu, ExternalLink, Activity, ArrowRight, Github, CloudOff, Database, WifiOff } from 'lucide-react';
 
 export default function LandingApp() {
   const [protocolMd, setProtocolMd] = useState('');
@@ -53,25 +53,33 @@ export default function LandingApp() {
             </h1>
             
             <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-12">
-              The world's first protocol for autonomous, zero-marginal-cost AI. Everything runs in-browser—no servers, no APIs, zero data leakage.
+              A new, experimental protocol for local-first, zero-marginal-cost AI. Core agent logic runs entirely in the browser—eliminating server costs, removing intermediary APIs, and maximizing data privacy.
             </p>
 
-            <div className="flex flex-wrap gap-4 select-none">
-              <div className="flex items-center gap-3 bg-white border border-black/10 px-5 py-3 rounded-2xl shadow-sm">
-                 <Shield className="text-blue-500" />
-                 <span className="font-semibold text-sm">Zero Data Leakage</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 select-none w-fit">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <Shield className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">Maximum Privacy</span>
               </div>
-              <div className="flex items-center gap-3 bg-white border border-black/10 px-5 py-3 rounded-2xl shadow-sm">
-                 <Activity className="text-emerald-500" />
-                 <span className="font-semibold text-sm">Infinite Scale</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <Activity className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">Client-Side Compute</span>
               </div>
-              <div className="flex items-center gap-3 bg-white border border-black/10 px-5 py-3 rounded-2xl shadow-sm">
-                 <CloudOff className="text-purple-500" />
-                 <span className="font-semibold text-sm">Zero API Costs</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <CloudOff className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">Zero LLM Costs</span>
               </div>
-              <div className="flex items-center gap-3 bg-white border border-black/10 px-5 py-3 rounded-2xl shadow-sm">
-                 <Cpu className="text-orange-500" />
-                 <span className="font-semibold text-sm">WebGPU Ready</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <Cpu className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">WebGPU Ready</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <WifiOff className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">Offline Capable</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
+                 <Database className="w-4 h-4 text-black/60" />
+                 <span className="font-medium text-sm">Local Memory</span>
               </div>
             </div>
           </motion.div>

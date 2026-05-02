@@ -28,9 +28,9 @@ async function init(modelId: string) {
     return Array.from(out.data);
   };
 
-  self.postMessage({ type: 'PROGRESS', data: `Downloading LLM (${modelId})` });
+  self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
   engine = await CreateMLCEngine(modelId, { 
-    initProgressCallback: (p: any) => self.postMessage({ type: 'PROGRESS', data: p.text }) 
+    initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p.text }) 
   });
   
   self.postMessage({ type: 'READY' });
@@ -74,10 +74,13 @@ async function calculate(expr: string) {
   }
 }
 
-async function handleTask(userText: string) {
+async function handleTask(userText: string, systemPrompt?: string) {
   await save('user', userText);
+  
+  const promptToUse = systemPrompt || `You are an autonomous agent. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
+
   let messages = [
-    { role: 'system', content: `You are an autonomous agent. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.` },
+    { role: 'system', content: promptToUse },
     { role: 'user', content: userText }
   ];
 
@@ -129,7 +132,7 @@ self.onmessage = async (e: MessageEvent) => {
   if (e.data.type === 'INIT') {
     await init(e.data.modelId);
   } else if (e.data.type === 'TASK') {
-    await handleTask(e.data.payload);
+    await handleTask(e.data.payload.text, e.data.payload.systemPrompt);
   } else if (e.data.type === 'INGEST_FILE') {
     await ingestFile(e.data.payload.name, e.data.payload.content);
   } else if (e.data.type === 'EXPORT_MEMORY') {
