@@ -27,7 +27,7 @@ export default function LandingApp() {
         </div>
         <div className="pointer-events-auto flex items-center gap-4">
           <a 
-            href="https://github.com/standardwebagent/Protocol" 
+            href="https://github.com/standardwebagent/Standardized-Web-Agents-Protocol" 
             target="_blank" 
             rel="noreferrer"
             className="hidden sm:flex items-center gap-2 hover:opacity-70 transition-opacity bg-white/80 px-4 py-2 rounded-full border border-black/10 text-sm font-medium backdrop-blur-md"

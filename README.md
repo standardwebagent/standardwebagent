@@ -1,6 +1,6 @@
 # Stan — Local-First Personal AI Assistant
 
-[![SWAP Conformance](https://img.shields.io/badge/SWAP-Conformance-blue)](#)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/standardwebagent/Standardized-Web-Agents-Protocol)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Stan** is a privacy-first, autonomous AI assistant built on the **Standardized Web Agent Protocol (SWAP)**. Unlike cloud-based chatbots, Stan runs entirely on your hardware and connects directly to your local ecosystem.
