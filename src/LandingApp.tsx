@@ -23,7 +23,7 @@ export default function LandingApp() {
             <circle cx="42" cy="50" r="5" fill="currentColor"/>
             <circle cx="58" cy="50" r="5" fill="currentColor"/>
           </svg>
-          <span className="text-xl tracking-tight hidden sm:block">SWAP Protocol</span>
+          <span className="text-xl tracking-tight hidden sm:block">Stan</span>
         </div>
         <div className="pointer-events-auto flex items-center gap-4">
           <a 
@@ -49,11 +49,11 @@ export default function LandingApp() {
             className="z-10"
           >
             <h1 className="text-6xl md:text-7xl xl:text-[88px] leading-[1.05] font-bold tracking-[-0.03em] mb-8 mt-4">
-              Build Local-First <br className="hidden sm:block" /> AI Agents.
+              Meet Stan. <br className="hidden sm:block" /> Your Personal Agent.
             </h1>
             
             <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-12">
-              A new, experimental protocol for local-first, zero-marginal-cost AI. Core agent logic runs entirely in the browser—eliminating server costs, removing intermediary APIs, and maximizing data privacy.
+              A local-first, privacy-focused assistant built on the SWAP protocol. Stan runs entirely in your browser using WebGPU and connects to your local tools via the Model Context Protocol (MCP).
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 select-none w-fit">
@@ -79,7 +79,7 @@ export default function LandingApp() {
               </div>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
                  <Database className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">Local Memory</span>
+                 <span className="font-medium text-sm">MCP Protocol</span>
               </div>
             </div>
           </motion.div>
@@ -108,11 +108,11 @@ export default function LandingApp() {
 
             <div className="mt-20 pt-8 border-t border-black/10 flex flex-col sm:flex-row gap-6 justify-between items-start sm:items-center">
               <div>
-                <h4 className="font-semibold text-lg mb-1">Adopt the standard.</h4>
-                <p className="text-sm text-black/60">Try the reference implementation running in your browser.</p>
+                <h4 className="font-semibold text-lg mb-1">Talk to Stan.</h4>
+                <p className="text-sm text-black/60">Try the reference assistant implementation running in your browser.</p>
               </div>
               <a href="/swap-agent.html" className="group inline-flex items-center gap-2 bg-[#0a0a0a] text-white px-6 py-3 rounded-xl font-medium hover:bg-black/80 transition-all shrink-0">
-                Launch SWAP Core <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                Launch Stan <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </a>
             </div>
           </motion.div>

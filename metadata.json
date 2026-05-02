@@ -1,6 +1,6 @@
 {
-  "name": "Standardized Web Agents Protocol",
-  "description": "An autonomous AI agent using Web-LLM, embedded vector search, and web tools.",
+  "name": "Stan",
+  "description": "A local-first, privacy-focused personal AI assistant using WebGPU and the Model Context Protocol (MCP).",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

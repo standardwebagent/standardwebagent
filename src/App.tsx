@@ -17,7 +17,7 @@ interface LLMModel {
   name: string;
 }
 
-const DEFAULT_PROMPT = `You are an autonomous agent. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
+const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to connect to tools. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
 
 const DEFAULT_MODELS: LLMModel[] = [
   { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B' },
@@ -46,7 +46,11 @@ export default function App() {
     return stored ? JSON.parse(stored) : DEFAULT_MODELS;
   });
   const [newModelId, setNewModelId] = useState('');
-  const [newModelName, setNewModelName] = useState('');
+  const [mcpServers, setMcpServers] = useState<string[]>(() => {
+    const stored = localStorage.getItem('swap_mcp_servers');
+    return stored ? JSON.parse(stored) : [];
+  });
+  const [newMcpUrl, setNewMcpUrl] = useState('');
 
   // Refs for closures
   const isVoiceEnabledRef = useRef(isVoiceEnabled);
@@ -163,7 +167,8 @@ export default function App() {
     };
 
     worker.postMessage({ type: 'INIT', modelId });
-  }, []);
+    worker.postMessage({ type: 'SYNC_MCP', payload: mcpServers });
+  }, [mcpServers]);
 
   useEffect(() => {
     initWorker(currentModel);
@@ -316,7 +321,7 @@ export default function App() {
             <circle cx="42" cy="50" r="4" fill="var(--accent)" />
             <circle cx="58" cy="50" r="4" fill="#00a3ff" />
           </svg>
-          <span className="text-base tracking-tight font-medium text-white/90">SWAP Core</span>
+          <span className="text-base tracking-tight font-medium text-white/90">Stan</span>
         </div>
         
         <div className="flex items-center gap-3">
@@ -353,14 +358,13 @@ export default function App() {
             <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 shadow-lg">
               <Cpu size={32} className="text-emerald-400" />
             </div>
-            <h2 className="text-xl font-semibold mb-2">How can I help you today?</h2>
+            <h2 className="text-xl font-semibold mb-2">Stan is here.</h2>
             <p className="text-sm text-white/50 mb-8 leading-relaxed">
-              I am an autonomous agent running entirely in your browser. I have tools for memory search, web fetches, calculations, and notes.
+              I am an autonomous agent running entirely in your browser. I use MCP to connect to your local data and tools securely.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <button onClick={() => setInputValue("What is the weather like?")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors">What is the weather like?</button>
-              <button onClick={() => setInputValue("Calculate 15% of 85.5")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors">Calculate 15% of 85.5</button>
-              <button onClick={() => setInputValue("Remember that my favorite color is blue")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors">Save a note</button>
+              <button onClick={() => setInputValue("Check my local calendar via MCP")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Connect local tools</button>
+              <button onClick={() => setInputValue("Summarize my local files")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Analyze files</button>
             </div>
           </div>
         )}
@@ -480,6 +484,57 @@ export default function App() {
                   className="text-xs text-white/40 hover:text-white transition-colors"
                 >
                   Reset to Default
+                </button>
+              </div>
+            </div>
+
+            <div className="h-px w-full bg-white/10 my-2"></div>
+
+            <div className="flex flex-col gap-4">
+              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">MCP Servers (SSE/WS URLs)</label>
+              
+              <div className="flex flex-col gap-2">
+                {mcpServers.map((url) => (
+                  <div key={url} className="flex items-center justify-between gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
+                    <span className="text-xs text-white/70 font-mono truncate flex-1">{url}</span>
+                    <button 
+                      onClick={() => {
+                        const updated = mcpServers.filter(u => u !== url);
+                        setMcpServers(updated);
+                        localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
+                      }}
+                      className="text-white/40 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-white/5"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-2 mt-2">
+                <input 
+                  type="text"
+                  placeholder="MCP Server URL (e.g., http://localhost:3001/sse)"
+                  value={newMcpUrl}
+                  onChange={(e) => setNewMcpUrl(e.target.value)}
+                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
+                />
+                <button 
+                  onClick={() => {
+                    if (newMcpUrl.trim()) {
+                      if (!mcpServers.includes(newMcpUrl.trim())) {
+                        const updated = [...mcpServers, newMcpUrl.trim()];
+                        setMcpServers(updated);
+                        localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
+                      }
+                      setNewMcpUrl('');
+                    }
+                  }}
+                  disabled={!newMcpUrl.trim()}
+                  className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  <Plus size={16} />
+                  Add Server
                 </button>
               </div>
             </div>

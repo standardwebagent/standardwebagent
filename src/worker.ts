@@ -1,10 +1,13 @@
 import { CreateMLCEngine } from "@mlc-ai/web-llm";
 import { PGlite } from "@electric-sql/pglite";
 import { pipeline } from "@xenova/transformers";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
 let engine: any;
 let db: PGlite;
 let embed: (text: string) => Promise<number[]>;
+let mcpClients: Map<string, Client> = new Map();
 
 async function init(modelId: string) {
   self.postMessage({ type: 'PROGRESS', data: 'Starting DB...' });
@@ -34,6 +37,31 @@ async function init(modelId: string) {
   });
   
   self.postMessage({ type: 'READY' });
+}
+
+async function syncMcp(urls: string[]) {
+  // Disconnect old clients that are no longer in the list
+  for (const [url, client] of mcpClients.entries()) {
+    if (!urls.includes(url)) {
+      try { await client.close(); } catch(e) {}
+      mcpClients.delete(url);
+    }
+  }
+
+  // Add new clients
+  for (const url of urls) {
+    if (!mcpClients.has(url)) {
+      try {
+        const transport = new SSEClientTransport(new URL(url));
+        const client = new Client({ name: "Stan-Browser-Agent", version: "1.0.0" }, { capabilities: { tools: {} } });
+        await client.connect(transport);
+        mcpClients.set(url, client);
+        self.postMessage({ type: 'PROGRESS', data: `Connected MCP: ${url}` });
+      } catch (err: any) {
+        self.postMessage({ type: 'ERROR', data: `Failed to connect to MCP ${url}: ${err.message}` });
+      }
+    }
+  }
 }
 
 async function save(role: string, content: string, meta: any = {}) {
@@ -76,46 +104,91 @@ async function calculate(expr: string) {
 
 async function handleTask(userText: string, systemPrompt?: string) {
   await save('user', userText);
+
+  // Collect all MCP tools
+  let dynamicTools: any[] = [];
+  for (const client of mcpClients.values()) {
+    try {
+      const { tools } = await client.listTools();
+      dynamicTools.push(...tools);
+    } catch(e) {}
+  }
+
+  const toolDescriptions = dynamicTools.map(t => `${t.name}: ${t.description} (Args: ${JSON.stringify(t.inputSchema.properties)})`).join('\n');
   
-  const promptToUse = systemPrompt || `You are an autonomous agent. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
+  const promptToUse = systemPrompt || `You are Stan, an autonomous personal assistant.
+You have native tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text).
+You also have these MCP dynamic tools:
+${toolDescriptions}
+
+Always use the "complete" tool to provide the final answer.
+Format your output as JSON: {"action":"tool_name", "payload":{...args} or "string_payload"}.
+Only output JSON.`;
 
   let messages = [
     { role: 'system', content: promptToUse },
     { role: 'user', content: userText }
   ];
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 15; i++) {
     const resp = await engine.chat.completions.create({ messages, temperature: 0.2 });
     const raw = resp.choices[0].message.content;
     let act;
     try { 
       act = JSON.parse(raw); 
     } catch(e) { 
-      self.postMessage({ type: 'ERROR', data: 'Invalid JSON from model: ' + raw }); 
-      return; 
+      // Try to extract JSON if model blabbed
+      const match = raw.match(/\{.*\}/s);
+      if (match) {
+        try { act = JSON.parse(match[0]); } catch(e2) {
+          self.postMessage({ type: 'ERROR', data: 'Invalid JSON from model: ' + raw }); 
+          return;
+        }
+      } else {
+        self.postMessage({ type: 'ERROR', data: 'Invalid JSON from model: ' + raw }); 
+        return; 
+      }
     }
 
     let observation = '';
     if (act.action === 'search_memory') {
-      const results = await search(act.payload);
-      observation = results.join('\\n') || 'No memories found.';
+      const results = await search(typeof act.payload === 'string' ? act.payload : act.payload.query);
+      observation = results.join('\n') || 'No memories found.';
     } else if (act.action === 'fetch_web') {
-      observation = await fetchWeb(act.payload);
+      observation = await fetchWeb(typeof act.payload === 'string' ? act.payload : act.payload.url);
     } else if (act.action === 'calculate') {
-      observation = await calculate(act.payload);
+      observation = await calculate(typeof act.payload === 'string' ? act.payload : act.payload.expression);
     } else if (act.action === 'save_note') {
-      await save('note', act.payload);
+      await save('note', typeof act.payload === 'string' ? act.payload : act.payload.text);
       observation = 'Note saved.';
     } else if (act.action === 'complete') {
-      self.postMessage({ type: 'DONE', data: act.payload });
-      await save('assistant', act.payload);
+      const finalResult = typeof act.payload === 'string' ? act.payload : (act.payload.answer || JSON.stringify(act.payload));
+      self.postMessage({ type: 'DONE', data: finalResult });
+      await save('assistant', finalResult);
       return;
     } else {
-      self.postMessage({ type: 'ERROR', data: 'Unknown action: ' + act.action });
-      return;
+      // Check for MCP dynamic tools
+      let foundMcp = false;
+      for (const client of mcpClients.values()) {
+        try {
+          const { tools } = await client.listTools();
+          if (tools.some(t => t.name === act.action)) {
+            self.postMessage({ type: 'THINKING', data: `Calling MCP tool: ${act.action}...` });
+            const result = await client.callTool({ name: act.action, arguments: act.payload });
+            observation = JSON.stringify(result);
+            foundMcp = true;
+            break;
+          }
+        } catch(e) {}
+      }
+
+      if (!foundMcp) {
+        self.postMessage({ type: 'ERROR', data: 'Unknown action: ' + act.action });
+        return;
+      }
     }
-    messages.push({ role: 'assistant', content: raw });
-    messages.push({ role: 'user', content: 'Tool result: ' + observation });
+    messages.push({ role: 'assistant', content: JSON.stringify(act) });
+    messages.push({ role: 'user', content: 'Tool observation: ' + observation });
   }
   self.postMessage({ type: 'ERROR', data: 'Max loops exceeded' });
 }
@@ -131,6 +204,8 @@ async function ingestFile(name: string, content: string) {
 self.onmessage = async (e: MessageEvent) => {
   if (e.data.type === 'INIT') {
     await init(e.data.modelId);
+  } else if (e.data.type === 'SYNC_MCP') {
+    await syncMcp(e.data.payload);
   } else if (e.data.type === 'TASK') {
     await handleTask(e.data.payload.text, e.data.payload.systemPrompt);
   } else if (e.data.type === 'INGEST_FILE') {
