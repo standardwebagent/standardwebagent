@@ -1,8 +1,11 @@
-import { CreateMLCEngine } from "@mlc-ai/web-llm";
 import { PGlite } from "@electric-sql/pglite";
-import { pipeline } from "@xenova/transformers";
+import { pipeline, env } from "@xenova/transformers";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+// Disable local models to fetch from HF
+env.allowLocalModels = false;
+env.backends.onnx.wasm.numThreads = 1; // Basic safety for some browsers
 
 let engine: any;
 let db: PGlite;
@@ -35,9 +38,23 @@ async function init(modelId: string) {
           return Array.from(out.data);
         };
 
-        self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
-        engine = await CreateMLCEngine(modelId, { 
-          initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
+        self.postMessage({ type: 'PROGRESS', data: `Loading WASM LLM (${modelId})` });
+        
+        // We handle progress events from Xenova
+        engine = await pipeline('text-generation', modelId, {
+          quantized: true,
+          progress_callback: (x: any) => {
+            if (x.status === 'init') return;
+            if (x.status === 'progress') {
+              self.postMessage({ 
+                type: 'DOWNLOAD_PROGRESS', 
+                data: {
+                  text: `Downloading ${x.file} : ${Math.round(x.progress)}%`,
+                  progress: x.progress / 100
+                } 
+              });
+            }
+          }
         });
         
         self.postMessage({ type: 'READY' });
@@ -132,6 +149,16 @@ function callMainThreadAPI(action: string, payload: any): Promise<any> {
     });
 }
 
+function convertMessagesToPrompt(messages: any[], promptToUse: string): string {
+    // Basic chat template for Xenova models. Many use ChatML or similar.
+    let fullPrompt = `<|system|>\n${promptToUse}<|end|>\n`;
+    for (const msg of messages) {
+       fullPrompt += `<|${msg.role}|>\n${msg.content}<|end|>\n`;
+    }
+    fullPrompt += `<|assistant|>\n`;
+    return fullPrompt;
+}
+
 async function handleTask(userText: string, systemPrompt?: string) {
   await save('user', userText);
 
@@ -157,13 +184,22 @@ Format your output as JSON: {"action":"tool_name", "payload":{...args} or "strin
 Only output JSON.`;
 
   let messages = [
-    { role: 'system', content: promptToUse },
     { role: 'user', content: userText }
   ];
 
   for (let i = 0; i < 15; i++) {
-    const resp = await engine.chat.completions.create({ messages, temperature: 0.2 });
-    const raw = resp.choices[0].message.content;
+    const formattedPrompt = convertMessagesToPrompt(messages, promptToUse);
+    const resp = await engine(formattedPrompt, { max_new_tokens: 512, temperature: 0.1, do_sample: false });
+    
+    // Xenova transformers returns an array of generation objects
+    let raw = resp[0].generated_text;
+    
+    // Strip the input prompt from the response
+    if (raw.startsWith(formattedPrompt)) {
+        raw = raw.slice(formattedPrompt.length);
+    }
+    
+    // Parse JSON
     let act;
     try { 
       act = JSON.parse(raw); 
@@ -194,11 +230,19 @@ Only output JSON.`;
       observation = 'Note saved.';
     } else if (act.action === 'complete') {
       const finalResult = typeof act.payload === 'string' ? act.payload : (act.payload.answer || JSON.stringify(act.payload));
+      
+      // In Phase 1, we want natural language directly. Since 'complete' payloads are sent as DONE,
+      // the App.tsx agent output translator will handle it, or we can just send it raw. The 
+      // user wants the user to see natural language. The agent translation spec:
+      // "complete" -> Use payload directly as final answer.
       self.postMessage({ type: 'DONE', data: JSON.stringify(act) });
       await save('assistant', finalResult);
       return;
     } else if (['clipboardRead', 'clipboardWrite', 'getGeolocation', 'showNotification', 'wakeLock', 'shareContent', 'vibrate'].includes(act.action)) {
-      self.postMessage({ type: 'THINKING', data: JSON.stringify(act) });
+      self.postMessage({ 
+        type: 'THINKING', 
+        data: JSON.stringify(act) 
+      });
       try {
         const result = await callMainThreadAPI(act.action, act.payload);
         observation = typeof result === 'object' ? JSON.stringify(result) : String(result);
@@ -237,7 +281,7 @@ async function ingestFile(name: string, content: string) {
   for (let chunk of chunks) {
     await save('document', `[FILE:${name}] ${chunk}`);
   }
-  self.postMessage({ type: 'DONE', data: `Ingested ${chunks.length} chunks from ${name}` });
+  self.postMessage({ type: 'DONE', data: `{"action":"complete","payload":"Ingested ${chunks.length} chunks from ${name}"}` });
 }
 
 self.onmessage = async (e: MessageEvent) => {
@@ -261,6 +305,6 @@ self.onmessage = async (e: MessageEvent) => {
         count++;
       }
     }
-    self.postMessage({ type: 'DONE', data: `Restored ${count} memory records successfully.` });
+    self.postMessage({ type: 'DONE', data: `{"action":"complete","payload":"Restored ${count} memory records successfully."}` });
   }
 };

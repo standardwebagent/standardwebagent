@@ -4,6 +4,26 @@ import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
 import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2 } from 'lucide-react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { detectEngine } from './engineDetector';
+
+import { get, set } from 'idb-keyval';
+import { Virtuoso } from 'react-virtuoso';
+
+declare global {
+  interface Window {
+    showSaveFilePicker?: any;
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
+
+DOMPurify.addHook('afterSanitizeAttributes', function(node) {
+  if ('target' in node) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
 
 interface Message {
   id: string;
@@ -13,16 +33,17 @@ interface Message {
   timestamp: string;
 }
 
-const MarkdownMessage = ({ text }: { text: string }) => {
+const MarkdownMessage = React.memo(({ text }: { text: string }) => {
   const [html, setHtml] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let isMounted = true;
     const parse = async () => {
       try {
         setLoading(true);
-        const parsed = await marked.parse(text);
+        const parsed = await marked.parse(text, { async: true });
         const cleanHover = DOMPurify.sanitize(parsed);
         if (isMounted) {
           setHtml(cleanHover);
@@ -40,8 +61,8 @@ const MarkdownMessage = ({ text }: { text: string }) => {
   }, [text]);
 
   useEffect(() => {
-    if (html && !loading) {
-      document.querySelectorAll('pre code').forEach((block) => {
+    if (html && !loading && contentRef.current) {
+      contentRef.current.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block as HTMLElement);
       });
     }
@@ -57,8 +78,8 @@ const MarkdownMessage = ({ text }: { text: string }) => {
     );
   }
 
-  return <div className="markdown-body text-[0.95rem] leading-[1.4]" dangerouslySetInnerHTML={{ __html: html }} />;
-};
+  return <div ref={contentRef} className="markdown-body text-[0.95rem] leading-[1.4]" dangerouslySetInnerHTML={{ __html: html }} />;
+});
 
 interface LLMModel {
   id: string;
@@ -94,6 +115,17 @@ export default function App() {
   const [eta, setEta] = useState<string | null>(null);
   const [modelLoadStarted, setModelLoadStarted] = useState(false);
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem('swap_prompt') || DEFAULT_PROMPT);
   const [customModels, setCustomModels] = useState<LLMModel[]>(() => {
     const stored = localStorage.getItem('swap_models');
@@ -106,6 +138,28 @@ export default function App() {
     return stored ? JSON.parse(stored) : [];
   });
   const [newMcpUrl, setNewMcpUrl] = useState('');
+  
+  const [persistConversation, setPersistConversation] = useState(() => localStorage.getItem('swap_persist') === 'true');
+
+  // Load from DB
+  useEffect(() => {
+    if (persistConversation) {
+      get('swap_messages').then((saved) => {
+        if (saved && isMountedRef.current) {
+          setMessages(saved);
+        }
+      }).catch(console.error);
+    }
+  }, []);
+
+  // Save to DB
+  useEffect(() => {
+    if (persistConversation) {
+      set('swap_messages', messages).catch(console.error);
+    } else {
+      set('swap_messages', []).catch(console.error);
+    }
+  }, [messages, persistConversation]);
 
   // Refs for closures
   const isVoiceEnabledRef = useRef(isVoiceEnabled);
@@ -115,6 +169,29 @@ export default function App() {
   }, [isVoiceEnabled]);
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSettingsOpen) {
+        setIsSettingsOpen(false);
+        localStorage.setItem('swap_prompt', systemPrompt);
+        localStorage.setItem('swap_models', JSON.stringify(customModels));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSettingsOpen, systemPrompt, customModels]);
+
+  useEffect(() => {
+    // Request persistent storage
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then(granted => {
+        if (granted) {
+          console.log("Storage will not be cleared except by explicit user action");
+        }
+      });
+    }
+
     return () => {
       isMountedRef.current = false;
     };
@@ -145,7 +222,7 @@ export default function App() {
     }
   }, [mcpServers, isReady]);
 
-  const initWorker = useCallback((modelId: string) => {
+  const initWorker = useCallback(async (modelId: string) => {
     if (workerRef.current) {
       workerRef.current.terminate();
     }
@@ -153,7 +230,20 @@ export default function App() {
     setIsSpinning(true);
     setIsReady(false);
 
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    let workerUrl = new URL('./worker.ts', import.meta.url);
+    const engineType = await detectEngine();
+    if (engineType === 'wasm') {
+      workerUrl = new URL('./worker-wasm.ts', import.meta.url);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(),
+        sender: 'system',
+        text: '⚡ WebGPU is not supported. Falling back to CPU/WASM engine automatically.',
+        isMarkdown: false,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    }
+
+    const worker = new Worker(workerUrl, { type: 'module' });
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
@@ -161,8 +251,19 @@ export default function App() {
       const { type, data } = e.data;
       switch (type) {
         case 'PROGRESS':
-        case 'THINKING':
           setStatus(data);
+          setIsSpinning(true);
+          break;
+        case 'THINKING':
+          try {
+            const rawAct = JSON.parse(data);
+            if (rawAct.action === 'search_memory') setStatus(`🔍 Searching memory...`);
+            else if (rawAct.action === 'fetch_web') setStatus(`🌐 Fetching...`);
+            else if (rawAct.action === 'calculate') setStatus(`🧮 Calculating...`);
+            else setStatus(`⚙️ Using tool ${rawAct.action}...`);
+          } catch(e) {
+            setStatus(data);
+          }
           setIsSpinning(true);
           break;
         case 'DOWNLOAD_PROGRESS':
@@ -201,13 +302,26 @@ export default function App() {
           worker.postMessage({ type: 'SYNC_MCP', payload: mcpServersRef.current });
           break;
         case 'DONE':
+          let agentOutput = data;
+          try {
+             const act = typeof data === 'string' ? JSON.parse(data) : data;
+             if (act.action === 'complete') {
+                agentOutput = typeof act.payload === 'string' ? act.payload : (act.payload.answer || act.payload);
+             } else {
+                // If it's another action that somehow ended up here, just stringify it
+                agentOutput = JSON.stringify(act);
+             }
+          } catch (e) {
+             // Fallback to raw string
+          }
+
           setTyping(false);
           setMessages(prev => [
             ...prev,
             {
               id: crypto.randomUUID(),
               sender: 'agent',
-              text: data,
+              text: agentOutput,
               isMarkdown: true,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
@@ -217,21 +331,27 @@ export default function App() {
           setIsSpinning(false);
           if (isVoiceEnabledRef.current && 'speechSynthesis' in window) {
             // Strip markdown formatting for cleaner speech synthesis
-            const textToSpeak = data.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '');
-            const utterance = new SpeechSynthesisUtterance(textToSpeak);
-            window.speechSynthesis.speak(utterance);
+            const textToSpeak = typeof agentOutput === 'string' ? agentOutput.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '') : '';
+            if (textToSpeak) {
+               const utterance = new SpeechSynthesisUtterance(textToSpeak);
+               window.speechSynthesis.speak(utterance);
+            }
           }
           break;
         case 'EXPORT_DATA':
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `swap_agent_memory_${new Date().getTime()}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-          setStatus('Export Complete');
-          setIsSpinning(false);
+          // The click might be handled by the direct file picker listener above,
+          // so only fallback if payload didn't explicitly say we have a file picker
+          if (!window.showSaveFilePicker) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `swap_agent_memory_${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setStatus('Export Complete');
+            setIsSpinning(false);
+          }
           break;
         case 'CALL_API': {
           const { id, action, payload } = e.data;
@@ -438,11 +558,51 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!workerRef.current) return;
-    setStatus('Exporting DB...');
-    setIsSpinning(true);
-    workerRef.current.postMessage({ type: 'EXPORT_MEMORY' });
+    try {
+      let fileHandle: any = null;
+      if (window.showSaveFilePicker) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: `swap_agent_memory_${new Date().getTime()}.json`,
+          types: [{
+            description: 'JSON Files',
+            accept: { 'application/json': ['.json'] },
+          }],
+        });
+        
+        // Setup one-time listener for the export data to write to the handle
+        const handleMsg = async (e: MessageEvent) => {
+          if (e.data.type === 'EXPORT_DATA') {
+            workerRef.current?.removeEventListener('message', handleMsg);
+            try {
+              const writable = await fileHandle.createWritable();
+              await writable.write(JSON.stringify(e.data.data, null, 2));
+              await writable.close();
+              setStatus('Export Complete');
+              setIsSpinning(false);
+            } catch (err) {
+              setStatus('Export failed');
+              setIsSpinning(false);
+            }
+          }
+        };
+        workerRef.current.addEventListener('message', handleMsg);
+        setStatus('Exporting DB...');
+        setIsSpinning(true);
+        workerRef.current.postMessage({ type: 'EXPORT_MEMORY', payload: { noAutoDownload: true } });
+      } else {
+        // Fallback to traditional download
+        setStatus('Exporting DB...');
+        setIsSpinning(true);
+        workerRef.current.postMessage({ type: 'EXPORT_MEMORY' });
+      }
+    } catch (err) {
+      if ((err as any).name !== 'AbortError') {
+        setStatus('Export Cancelled or Failed');
+      }
+      setIsSpinning(false);
+    }
   };
 
   const handleMic = () => {
@@ -561,15 +721,31 @@ export default function App() {
             <span className="text-[11px] font-medium text-white/70 truncate max-w-[100px]">{status}</span>
           </div>
 
-          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors ml-1">
+          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors ml-1" aria-label="Open Settings">
             <Settings size={14} />
           </button>
         </div>
       </header>
 
       {/* Chat Container */}
-      <main className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white-[0.08] backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl">
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 webkit-overflow-scrolling-touch">
+      <main 
+        className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white-[0.08] backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl"
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const dt = new DataTransfer();
+            dt.items.add(e.dataTransfer.files[0]);
+            if (fileInputRef.current) {
+              fileInputRef.current.files = dt.files;
+              handleFileUpload({ target: fileInputRef.current } as any);
+            }
+          }
+        }}
+      >
+        <ErrorBoundary>
+        <div ref={chatContainerRef} className="flex-1 overflow-hidden flex flex-col pr-2">
         
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
@@ -603,33 +779,42 @@ export default function App() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div 
-            key={msg.id} 
-            className={`flex flex-col max-w-[85%] animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'self-end' : 'self-start'}`}
-          >
-            <div className={`px-4 py-3 border backdrop-blur-lg break-words ${msg.sender === 'user' ? 'bg-white/5 border-white/5 rounded-2xl rounded-tr-none' : 'bg-white/10 border-white/20 rounded-2xl rounded-tl-none'} shadow-lg`}>
-              {renderMessageContent(msg)}
-            </div>
-            <div className={`text-[10px] text-white/40 mt-1 select-none font-mono ${msg.sender === 'user' ? 'mr-2' : 'ml-2'}`}>
-              {msg.sender === 'user' ? 'USR' : 'AGT'} • {msg.timestamp}
-            </div>
-          </div>
-        ))}
-
-        {typing && (
-          <div className="flex flex-col max-w-[85%] self-start animate-[fadeIn_0.2s_ease]">
-            <div className="px-4 py-3 bg-white/10 border border-white/20 rounded-2xl rounded-tl-none backdrop-blur-lg w-max shadow-lg shadow-black/20">
-              <div className="flex items-center gap-2 h-5">
-                <div className="w-16 h-1 bg-white/20 rounded-full overflow-hidden relative">
-                  <div className="absolute top-0 h-full bg-white/60 w-1/2 rounded-full animate-progress"></div>
+        {messages.length > 0 && (
+          <Virtuoso
+            style={{ height: '100%' }}
+            data={messages}
+            initialTopMostItemIndex={messages.length - 1}
+            followOutput="auto"
+            itemContent={(index, msg) => (
+              <div 
+                className={`flex flex-col max-w-[85%] pb-6 animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'ml-auto' : 'mr-auto'}`}
+              >
+                <div className={`px-4 py-3 border backdrop-blur-lg break-words ${msg.sender === 'user' ? 'bg-white/5 border-white/5 rounded-2xl rounded-tr-none' : 'bg-white/10 border-white/20 rounded-2xl rounded-tl-none'} shadow-lg`}>
+                  {renderMessageContent(msg)}
                 </div>
-                <span className="text-[11px] text-white/60 uppercase tracking-widest">Processing...</span>
+                <div className={`text-[10px] text-white/40 mt-1 select-none font-mono ${msg.sender === 'user' ? 'text-right mr-2' : 'ml-2'}`}>
+                  {msg.sender === 'user' ? 'USR' : 'AGT'} • {msg.timestamp}
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+            components={{
+              Footer: () => typing ? (
+                <div className="flex flex-col max-w-[85%] self-start animate-[fadeIn_0.2s_ease] pb-6">
+                  <div className="px-4 py-3 bg-white/10 border border-white/20 rounded-2xl rounded-tl-none backdrop-blur-lg w-max shadow-lg shadow-black/20">
+                    <div className="flex items-center gap-2 h-5">
+                      <div className="w-16 h-1 bg-white/20 rounded-full overflow-hidden relative">
+                        <div className="absolute top-0 h-full bg-white/60 w-1/2 rounded-full animate-progress"></div>
+                      </div>
+                      <span className="text-[11px] text-white/60 uppercase tracking-widest">Processing...</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null
+            }}
+          />
         )}
         </div>
+        </ErrorBoundary>
 
         {/* Input Area */}
         <div className="mt-auto relative shrink-0 pt-2">
@@ -665,14 +850,14 @@ export default function App() {
                    <Mic size={16} />
                  </button>
                  <div className="w-px h-3 bg-white/10 mx-1"></div>
-                 <button onClick={() => setIsVoiceEnabled(!isVoiceEnabled)} className={`p-1.5 cursor-pointer transition-colors rounded-lg ${isVoiceEnabled ? 'text-emerald-400 bg-emerald-400/10' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Toggle Voice Response">
+                 <button onClick={() => setIsVoiceEnabled(!isVoiceEnabled)} className={`p-1.5 cursor-pointer transition-colors rounded-lg ${isVoiceEnabled ? 'text-emerald-400 bg-emerald-400/10' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Toggle Voice Response" aria-label="Toggle Voice Response">
                    {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                  </button>
                  <div className="w-px h-3 bg-white/10 mx-1"></div>
-                 <button onClick={handleExport} className="p-1.5 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-lg" title="Backup Base Data">
+                 <button onClick={handleExport} className="p-1.5 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-lg" title="Backup Base Data" aria-label="Backup Base Data">
                    <Download size={16} />
                  </button>
-                 <label className="p-1.5 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-lg flex items-center" title="Restore Data">
+                 <label className="p-1.5 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-lg flex items-center" title="Restore Data" aria-label="Restore Data">
                    <Upload size={16} />
                    <input type="file" className="hidden" accept=".json" onChange={handleImport} />
                  </label>
@@ -682,6 +867,7 @@ export default function App() {
                 onClick={handleSend}
                 disabled={!isReady || isProcessing || !inputValue.trim()}
                 className="w-8 h-8 bg-white hover:bg-gray-200 text-black rounded-lg flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:bg-white/10 disabled:text-white transition-all ml-2"
+                aria-label="Send message"
               >
                 <div className={`${isProcessing ? 'animate-pulse' : ''}`}>
                   <Send size={14} className="" />
@@ -694,18 +880,71 @@ export default function App() {
 
       {/* Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease]">
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsSettingsOpen(false);
+              localStorage.setItem('swap_prompt', systemPrompt);
+              localStorage.setItem('swap_models', JSON.stringify(customModels));
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease]"
+        >
           <div className="bg-[#0a0b14] border border-white/10 w-full max-w-2xl rounded-3xl p-6 shadow-2xl flex flex-col gap-6 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold tracking-tight">Agent Settings</h2>
-              <button onClick={() => {
-                setIsSettingsOpen(false);
-                localStorage.setItem('swap_prompt', systemPrompt);
-                localStorage.setItem('swap_models', JSON.stringify(customModels));
-              }} className="p-2 text-white/40 hover:text-white transition-colors rounded-xl hover:bg-white/5">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-semibold tracking-tight">Agent Settings</h2>
+                {deferredPrompt && (
+                  <button
+                    onClick={async () => {
+                      deferredPrompt.prompt();
+                      const { outcome } = await deferredPrompt.userChoice;
+                      if (outcome === 'accepted') {
+                        setDeferredPrompt(null);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-medium rounded-lg transition-colors text-xs border border-emerald-500/20"
+                  >
+                    Install App
+                  </button>
+                )}
+              </div>
+              <button 
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  localStorage.setItem('swap_prompt', systemPrompt);
+                  localStorage.setItem('swap_models', JSON.stringify(customModels));
+                }} 
+                className="p-2 text-white/40 hover:text-white transition-colors rounded-xl hover:bg-white/5"
+                aria-label="Close Settings"
+              >
                 <X size={20} />
               </button>
             </div>
+
+            <div className="flex flex-col gap-3">
+              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">Conversation Persistence</label>
+              <div className="flex items-center gap-3">
+                <button
+                  role="switch"
+                  aria-checked={persistConversation}
+                  onClick={() => {
+                    const next = !persistConversation;
+                    setPersistConversation(next);
+                    localStorage.setItem('swap_persist', String(next));
+                    if (!next) {
+                      setMessages([]);
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${persistConversation ? 'bg-emerald-500' : 'bg-white/20'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${persistConversation ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+                <span className="text-sm text-white/70">Save messages locally (IndexedDB). If toggled off, clears saved conversation.</span>
+              </div>
+            </div>
+
+            <div className="h-px w-full bg-white/10 my-1"></div>
 
             <div className="flex flex-col gap-3">
               <label className="text-xs text-white/50 uppercase tracking-wider font-mono">System Prompt</label>
@@ -845,6 +1084,35 @@ export default function App() {
             </div>
             </>
             )}
+
+            <div className="h-px w-full bg-white/10 my-2"></div>
+            
+            <div className="flex flex-col gap-3">
+               <label className="text-xs text-red-500/80 uppercase tracking-wider font-mono">Danger Zone</label>
+               <button 
+                 onClick={async () => {
+                   if (confirm("Are you sure you want to clear all data? This will wipe the downloaded AI models, database, IndexedDB, and local storage.")) {
+                     localStorage.clear();
+                     const dbs = await window.indexedDB.databases();
+                     dbs.forEach(db => { if (db.name) window.indexedDB.deleteDatabase(db.name); });
+                     const opfs = await navigator.storage.getDirectory();
+                     // PGlite creates 'swap-core' OPFS directory theoretically, or we can just try to delete all.
+                     // But we can clear caches.
+                     if ('caches' in window) {
+                       const keys = await caches.keys();
+                       for (const key of keys) {
+                         await caches.delete(key);
+                       }
+                     }
+                     window.location.reload();
+                   }
+                 }}
+                 className="flex items-center justify-center gap-2 p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl transition-colors text-sm font-medium"
+               >
+                 <Trash2 size={16} />
+                 Clear All Data & Reset App
+               </button>
+            </div>
           </div>
         </div>
       )}
