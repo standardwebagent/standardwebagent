@@ -90,12 +90,8 @@ interface LLMModel {
 
 const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to connect to tools. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
 
-const DEFAULT_MODELS: LLMModel[] = [
-  { id: 'functiongemma-270m-it', name: 'FunctionGemma 270M', description: 'Lightning-fast tool-calling. Best default.' },
-  { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B', description: 'Balanced performance and reasoning. Best overall choice.' },
-  { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B', description: 'Fastest loading and generation. Best for older devices/phones.' },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
-];
+const STAN_MODEL_ID = 'functiongemma-270m-it'
+const STAN_MODEL_NAME = 'FunctionGemma 270M'
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -104,7 +100,6 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [currentModel, setCurrentModel] = useState('functiongemma-270m-it');
   const [typing, setTyping] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -123,13 +118,9 @@ export default function App() {
       const detected = await detectEngine();
       setEngine(detected);
       
-      // If we have a lightweight engine that loads quickly, auto-start the model
-      if (detected === 'wasm' || detected === 'webnn') {
-        // For WebNN, we still need the WASM worker until WebNN runtime is fully integrated
-        // Auto-load the small FunctionGemma model
-        if (!modelLoadStarted) {
-          startModel();   // This will now use the WASM worker and FunctionGemma
-        }
+      // Auto-load the model
+      if (!modelLoadStarted) {
+        startModel();
       }
     };
     initEngine();
@@ -148,12 +139,6 @@ export default function App() {
   }, []);
 
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem('swap_prompt') || DEFAULT_PROMPT);
-  const [customModels, setCustomModels] = useState<LLMModel[]>(() => {
-    const stored = localStorage.getItem('swap_models');
-    return stored ? JSON.parse(stored) : DEFAULT_MODELS;
-  });
-  const [newModelId, setNewModelId] = useState('');
-  const [newModelName, setNewModelName] = useState('');
   const [mcpServers, setMcpServers] = useState<string[]>(() => {
     const stored = localStorage.getItem('swap_mcp_servers');
     return stored ? JSON.parse(stored) : [];
@@ -194,14 +179,13 @@ export default function App() {
       if (e.key === 'Escape' && isSettingsOpen) {
         setIsSettingsOpen(false);
         localStorage.setItem('swap_prompt', systemPrompt);
-        localStorage.setItem('swap_models', JSON.stringify(customModels));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isSettingsOpen, systemPrompt, customModels]);
+  }, [isSettingsOpen, systemPrompt]);
 
   useEffect(() => {
     // Request persistent storage
@@ -502,28 +486,7 @@ export default function App() {
 
   const startModel = () => {
     setModelLoadStarted(true);
-    initWorker(currentModel);
-  };
-
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newModel = e.target.value;
-    if (newModel === currentModel) return;
-    
-    if (modelLoadStarted) {
-      if (window.confirm("Do you want to stop the current model and load the new one?")) {
-        setCurrentModel(newModel);
-        setMessages([{
-          id: crypto.randomUUID(),
-          sender: 'system',
-          text: `Switching to ${e.target.options[e.target.selectedIndex].text}...`,
-          isMarkdown: false,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }]);
-        initWorker(newModel);
-      }
-    } else {
-      setCurrentModel(newModel);
-    }
+    initWorker(STAN_MODEL_ID);
   };
 
   const handleSend = () => {
@@ -760,17 +723,8 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3">
-          <div className="flex bg-white/5 hover:bg-white/10 border border-white/10 rounded-full py-1 px-3 items-center gap-2 transition-colors">
-            <Cpu size={12} className="text-emerald-400" />
-            <select 
-              className="bg-transparent border-none text-[11px] font-medium outline-none cursor-pointer text-white/70 hover:text-white appearance-none truncate max-w-[120px]"
-              value={currentModel}
-              onChange={handleModelChange}
-            >
-              {customModels.map(m => (
-                <option key={m.id} value={m.id} className="bg-[#0a0b14]">{m.name}</option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2 py-1 px-3">
+            <span className="text-[11px] font-medium text-white/60">{STAN_MODEL_NAME}</span>
             {engine === 'webgpu' && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded">GPU</span>}
             {engine === 'webnn' && <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1 rounded">NPU</span>}
             {engine === 'wasm' && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">CPU</span>}
@@ -815,33 +769,51 @@ export default function App() {
         
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 shadow-lg">
-              <svg className="w-10 h-10" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="30" width="60" height="40" rx="6" fill="white" fillOpacity="0.05" stroke="white" strokeOpacity="0.3" strokeWidth="2.5" />
-                <circle cx="42" cy="50" r="5" fill="var(--accent)" />
-                <circle cx="58" cy="50" r="5" fill="#00a3ff" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold mb-2">Stan is here.</h2>
-            <p className="text-sm text-white/50 mb-8 leading-relaxed">
-              I am an autonomous agent running entirely in your browser. I use MCP to connect to your local data and tools securely.<br/><br/>
-              {!modelLoadStarted && "Please choose a model from the top right menu, then click the button below to download and load it into your browser."}
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {!modelLoadStarted ? (
-                <div className="flex flex-col items-center gap-3">
-                  <button onClick={startModel} className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl transition-colors shadow-lg shadow-emerald-500/20 text-sm flex items-center gap-2">
-                    <Cpu size={16} /> Load Selected Model ({customModels.find(m => m.id === currentModel)?.name})
-                  </button>
-                  <p className="text-xs text-white/40 max-w-xs text-center">{customModels.find(m => m.id === currentModel)?.description || "A local WebGPU-accelerated model."}</p>
+            {!isReady ? (
+              /* Phase 2: Model is loading (download/init) */
+              <>
+                <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mb-6 border border-emerald-500/20">
+                  <Loader2 size={32} className="text-emerald-400 animate-spin" />
                 </div>
-              ) : (
-                <>
-                  <button onClick={() => setInputValue("Check my local calendar via MCP")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Connect local tools</button>
-                  <button onClick={() => setInputValue("Summarize my local files")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Analyze files</button>
-                </>
-              )}
-            </div>
+                <h2 className="text-xl font-semibold mb-2">Setting up your private AI…</h2>
+                <p className="text-sm text-white/50 mb-4">{status}</p>
+                {/* mini progress bar */}
+                <div className="w-full max-w-[200px] h-1.5 bg-white/10 rounded-full overflow-hidden mb-6">
+                  <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" 
+                       style={{ width: `${downloadProgress * 100}%` }} />
+                </div>
+                <p className="text-xs text-white/30">This may take a minute the first time. After that, launches are instant.</p>
+              </>
+            ) : (
+              /* Phase 3: Ready — show example prompts */
+              <>
+                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10">
+                  <svg className="w-10 h-10" viewBox="0 0 100 100" fill="none">
+                    <rect x="20" y="30" width="60" height="40" rx="6" fill="white" fillOpacity="0.05" stroke="white" strokeOpacity="0.3" strokeWidth="2.5" />
+                    <circle cx="42" cy="50" r="5" fill="var(--accent)" />
+                    <circle cx="58" cy="50" r="5" fill="#00a3ff" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-semibold mb-2">Stan is ready</h2>
+                <p className="text-sm text-white/50 mb-8 leading-relaxed">
+                  Your private AI assistant runs entirely on this device. Ask anything — your data never leaves this browser.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <button onClick={() => setInputValue("Search my local notes for 'project deadline'")} 
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-colors">
+                    🔍 Search my notes
+                  </button>
+                  <button onClick={() => setInputValue("Summarize this document")} 
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-colors">
+                    📄 Summarize a file
+                  </button>
+                  <button onClick={() => setInputValue("What's 15% of 280 plus 50?")} 
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-colors">
+                    🧮 Quick math
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -952,7 +924,6 @@ export default function App() {
             if (e.target === e.currentTarget) {
               setIsSettingsOpen(false);
               localStorage.setItem('swap_prompt', systemPrompt);
-              localStorage.setItem('swap_models', JSON.stringify(customModels));
             }
           }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease]"
@@ -980,7 +951,6 @@ export default function App() {
                 onClick={() => {
                   setIsSettingsOpen(false);
                   localStorage.setItem('swap_prompt', systemPrompt);
-                  localStorage.setItem('swap_models', JSON.stringify(customModels));
                 }} 
                 className="p-2 text-white/40 hover:text-white transition-colors rounded-xl hover:bg-white/5"
                 aria-label="Close Settings"
@@ -1037,7 +1007,7 @@ export default function App() {
               onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
               className="text-sm font-medium text-white/70 hover:text-white flex items-center justify-between w-full p-2 bg-white/5 rounded-xl transition-colors"
             >
-              <span>Advanced Settings (MCP Servers & Local Models)</span>
+              <span>Advanced Settings (MCP Servers)</span>
               <span>{showAdvancedSettings ? '▼' : '▶'}</span>
             </button>
 
@@ -1093,64 +1063,6 @@ export default function App() {
               </div>
             </div>
 
-            <div className="h-px w-full bg-white/10 my-2"></div>
-
-            <div className="flex flex-col gap-4">
-              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">LLM Models (WebLLM Identifiers)</label>
-              
-              <div className="flex flex-col gap-2">
-                {customModels.map((m) => (
-                  <div key={m.id} className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm">{m.name}</span>
-                      <span className="text-[11px] text-white/50">{m.description}</span>
-                      <span className="text-[10px] text-white/30 font-mono break-all mt-1">{m.id}</span>
-                    </div>
-                    <button 
-                      onClick={() => setCustomModels(prev => prev.filter(mod => mod.id !== m.id))}
-                      className="text-white/40 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-white/5"
-                      aria-label="Remove Model"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col md:flex-row gap-2 mt-2">
-                <input 
-                  type="text"
-                  placeholder="Model Name (e.g., Llama 3 8B)"
-                  value={newModelName}
-                  onChange={(e) => setNewModelName(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500/50"
-                />
-                <input 
-                  type="text"
-                  placeholder="WebLLM ID (e.g., Llama-3-8B-Instruct-q4f16_1-MLC)"
-                  value={newModelId}
-                  onChange={(e) => setNewModelId(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-                />
-                <button 
-                  onClick={() => {
-                    if (newModelId.trim() && newModelName.trim()) {
-                      if (!customModels.find(m => m.id === newModelId.trim())) {
-                         setCustomModels(prev => [...prev, { id: newModelId.trim(), name: newModelName.trim() }]);
-                      }
-                      setNewModelId('');
-                      setNewModelName('');
-                    }
-                  }}
-                  disabled={!newModelId.trim() || !newModelName.trim()}
-                  className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  <Plus size={16} />
-                  Add
-                </button>
-              </div>
-
-            </div>
             </>
             )}
 

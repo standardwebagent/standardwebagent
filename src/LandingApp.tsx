@@ -51,7 +51,7 @@ export default function LandingApp() {
             </h1>
             
             <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-12">
-              A local-first, privacy-focused assistant built on the SWAP protocol. Stan runs entirely in your browser using WebGPU and connects to your local tools via the Model Context Protocol (MCP).
+              A local-first, privacy-focused assistant built on the SWAP protocol. Stan runs entirely in your browser using WebAssembly and hardware acceleration, and connects to your local tools via the Model Context Protocol (MCP).
             </p>
           </motion.div>
         </section>

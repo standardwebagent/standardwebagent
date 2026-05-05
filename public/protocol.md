@@ -11,9 +11,9 @@ SWAP completely flips the current AI model. Instead of thin clients talking to m
 
 What makes it fundamentally different:
 1. **Zero Data Leakage:** Data literally cannot leave the device—there are no server endpoints to send it to.
-2. **Infinite Scale, Zero Hosting Bills:** Since execution happens on user hardware (WebGPU) and heavy AI models are fetched directly from free public CDN networks (like Hugging Face) or via peer-to-peer distribution, the developer pays absolutely nothing for compute or bandwidth. Hosting a SWAP agent for 10 users costs the exact same as hosting it for 10 million: zero.
+2. **Infinite Scale, Zero Hosting Bills:** Since execution happens on user hardware (WebAssembly, WebNN, WebGPU) and AI models are fetched directly from free public CDN networks (like Hugging Face) or via peer-to-peer distribution, the developer pays absolutely nothing for compute or bandwidth. Hosting a SWAP agent for 10 users costs the exact same as hosting it for 10 million: zero.
 3. **True Ownership:** The user holds the cryptographic keys to their agent's memories within their personal Origin.
-4. **Local Hardware Acceleration:** It leverages WebGPU and WebAssembly (JSPI) to run embedded multi-gigabyte models at native speeds.
+4. **Local Hardware Acceleration:** It leverages WebAssembly, WebNN, and WebGPU to run embedded models at native speeds.
 
 It enables true, private, persistent, and universally accessible AI—a complete breakaway from centralized AI architectures.
 
@@ -39,9 +39,9 @@ These are **required** for a standard agent implementation (like the Standardize
 - Offline Maps (optional)
 
 ### Enclave 6: Cognition & Reasoning
-- Local LLM (WebLLM / Transformers.js) – Gemma 2B, SmolLM 1.7B, Llama 3.2 3B
+- Local AI (Transformers.js) – FunctionGemma 270M, SmolLM 1.7B, Llama 3.2 3B
 - Vector embeddings + semantic search (384-dim, pgvector)
-- Hardware acceleration (WebGPU / WebGL)
+- Hardware acceleration (WebAssembly, WebNN, WebGPU)
 - ReAct loop (`search` → `reply`) with tool use (fetch, file ingest)
 - Multi-modal extensions (optional)
 

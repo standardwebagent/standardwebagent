@@ -5,7 +5,7 @@
 - **Formal specification:** [protocol.md](public/protocol.md) – covering the 10 core enclaves of the protocol.
 - **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
 - **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
-- **WebGPU & WebNN Powered:** Leverages your GPU or NPU for native-speed inference using WebLLM and Transformers.js, with automatic WASM fallbacks for older devices.
+- **Local AI & Hardware Acceleration:** Leverages your GPU, NPU, or CPU for native-speed inference using **WebAssembly, WebNN, and WebGPU**, with automatic fallbacks for optimal performance on any device.
 
 ### Why Stan is Different
 
@@ -38,14 +38,14 @@ Using an embedded **PGlite** (Postgres WASM) database with vector extensions, St
 - **Document Ingestion:** Drag and drop `.txt` or `.md` files to build a local knowledge base.
 - **Semantic Recall:** Stan automatically retrieves relevant context.
 
-**High-Performance Local Models**
+**High-Performance Local AI**
 Choose your engine:
 
 - ⚡ **FunctionGemma 270M** (Lightning-fast, default)
 - 🚀 **Gemma 2B** (Balanced)
 - ⚡ **SmolLM 1.7B** (Fastest loading for older devices)
 - 🧠 **Llama 3.2 3B** (Most capable)
-- 🖥️ **WASM/WebNN Fallback Models** (for CPU/NPU devices)
+- 🖥️ **WASM/WebNN/WebGPU Engines** (Optimized for your hardware)
 
 ## 📚 Documentation
 
