@@ -25,3 +25,9 @@ Stan uses engine detection under `src/engineDetector.ts` to seamlessly identify 
 ## Local Configuration (Electron / Desktop environments)
 
 For deeper sandboxing, you can adjust the service worker configuration or the internal Content Security Policy string using standard PWA distribution techniques. To do so, customize Vite's build settings and include your specific headers.
+
+## Cloud Deployment (Cloudflare Pages)
+
+We have transitioned static hosting from Vercel to **Cloudflare Pages**. 
+When deploying, make sure that the build output directory (`dist/`) includes the `public/_headers` file. 
+This file provisions the correct `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers necessary for multi-threaded WASM and WebGPU isolation features to function securely in standard browsers.

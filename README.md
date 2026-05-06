@@ -47,6 +47,8 @@ Choose your engine:
 - 🧠 **Llama 3.2 3B** (Most capable)
 - 🖥️ **WASM/WebNN/WebGPU Engines** (Optimized for your hardware)
 
+> **Important:** Stan requires a device with at least 4GB of RAM and 4 CPU cores to execute local AI models successfully.
+
 ## 📚 Documentation
 
 Explore the following configuration and operational guides for Stan:
