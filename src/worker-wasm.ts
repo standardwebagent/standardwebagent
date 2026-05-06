@@ -15,10 +15,16 @@ async function initModel(modelId: string) {
     dtype: 'q8',           // 8‑bit quantisation for low memory
     max_length: 512,
     progress_callback: (p: any) => {
-      self.postMessage({ 
-        type: 'DOWNLOAD_PROGRESS', 
-        data: { text: p.file ? `Loading ${p.file}` : (p.status || 'Loading...'), progress: p.progress || 0 } 
-      });
+      if (p.status === 'progress' && p.total) {
+        const percent = Math.round((p.loaded / p.total) * 100);
+        self.postMessage({
+          type: 'DOWNLOAD_PROGRESS',
+          data: {
+            text: p.name ? `Loading ${p.name} …` : 'Downloading model …',
+            progress: percent / 100   // decimal for App.tsx's *100 display
+          }
+        });
+      }
     }
   } as any)
 }

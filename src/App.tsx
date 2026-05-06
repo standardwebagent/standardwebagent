@@ -285,7 +285,8 @@ export default function App() {
     setIsReady(false);
 
     // Choose the right worker based on detected engine
-    const workerUrl = (engine === 'webgpu')
+    const activeEngine = engineType ?? engine;
+    const workerUrl = (activeEngine === 'webgpu')
       ? new URL('./worker.ts', import.meta.url)
       : new URL('./worker-wasm.ts', import.meta.url); // handles both wasm & future webnn
 

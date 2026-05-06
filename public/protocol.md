@@ -39,7 +39,7 @@ These are **required** for a standard agent implementation (like the Standardize
 - Offline Maps (optional)
 
 ### Enclave 6: Cognition & Reasoning
-- Local AI (Transformers.js) – FunctionGemma 270M, SmolLM 1.7B, Llama 3.2 3B
+- Local AI (Transformers.js) – FunctionGemma 270M (default), plus custom models added via Settings
 - Vector embeddings + semantic search (384-dim, pgvector)
 - Hardware acceleration (WebAssembly, WebNN, WebGPU)
 - ReAct loop (`search` → `reply`) with tool use (fetch, file ingest)

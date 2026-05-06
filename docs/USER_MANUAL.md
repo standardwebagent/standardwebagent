@@ -15,7 +15,7 @@ For security features, check the [Privacy Impact Assessment](PRIVACY_IMPACT_ASSE
 ## Getting Started
 
 1. **Launch the App**: Open the app in any modern browser.
-2. **Select a Model**: From the top right menu, pick the default model or enter a Hugging Face slug (like `onnx-community/Llama-3.2-1B-Instruct-q4f16_1-MLC`) for advanced users. Click to download. The model is stored locally in your browser so you don't need to re-download it.
+2. **Model Loading**: Stan automatically loads its default optimized model on startup. If you wish to use other models, you can add them via a Hugging Face slug (like `onnx-community/Llama-3.2-1B-Instruct-q4f16_1-MLC`) in the Settings menu. The model is stored locally in your browser so you don't need to re-download it.
 3. **Chat**: You can start chatting instantly once the engine starts!
 
 ## Features

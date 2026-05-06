@@ -42,10 +42,8 @@ Using an embedded **PGlite** (Postgres WASM) database with vector extensions, St
 Choose your engine:
 
 - ⚡ **FunctionGemma 270M** (Lightning-fast, default)
-- 🚀 **Gemma 2B** (Balanced)
-- ⚡ **SmolLM 1.7B** (Fastest loading for older devices)
-- 🧠 **Llama 3.2 3B** (Most capable)
 - 🖥️ **WASM/WebNN/WebGPU Engines** (Optimized for your hardware)
+- ⚙️ **Custom Models** (Add more via the Settings menu)
 
 > **Important:** Stan requires a device with at least 4GB of RAM and 4 CPU cores to execute local AI models successfully.
 

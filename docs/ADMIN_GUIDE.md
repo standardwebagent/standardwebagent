@@ -12,7 +12,7 @@ If you choose to distribute the software as a desktop app format using the local
 
 ## Custom Models
 
-Users can load new arbitrary models if the model follows the standard JSON pipeline config structure expected by Xenova pipelines and MLC engines. Modify the static models list in `src/App.tsx`.
+Users can load new arbitrary models via the Settings menu in the application, provided the model follows the standard JSON pipeline config structure expected by Xenova pipelines and MLC engines.
 
 ### Engine Details
 
