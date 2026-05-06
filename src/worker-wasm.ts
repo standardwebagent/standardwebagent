@@ -56,7 +56,11 @@ self.onmessage = async (e: MessageEvent) => {
         postMessage({ type: 'ERROR', data: 'Model not loaded yet' })
         break
       }
-      currentSystemPrompt = systemPrompt || currentSystemPrompt
+      const basePrompt = systemPrompt || 'You are Stan, an autonomous personal assistant.'
+      currentSystemPrompt = `${basePrompt}
+      
+Format your output as a single JSON object: {"action":"tool_name", "payload":{...args} or "string_payload"}.
+Only output JSON.`
       const messages = [
         { role: 'system', content: currentSystemPrompt },
         { role: 'user', content: text }

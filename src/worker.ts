@@ -146,14 +146,15 @@ async function handleTask(userText: string, systemPrompt?: string) {
 
   const toolDescriptions = dynamicTools.map(t => `${t.name}: ${t.description} (Args: ${JSON.stringify(t.inputSchema.properties)})`).join('\n');
   
-  const promptToUse = systemPrompt || `You are Stan, an autonomous personal assistant.
+  const promptToUse = `${systemPrompt || 'You are Stan, an autonomous personal assistant.'}
+
 You have native tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text).
 You also have browser tools: clipboardRead (), clipboardWrite (text), getGeolocation (), showNotification (title, body), wakeLock (), shareContent (text, url), vibrate (ms).
 You also have these MCP dynamic tools:
 ${toolDescriptions}
 
 Always use the "complete" tool to provide the final answer.
-Format your output as JSON: {"action":"tool_name", "payload":{...args} or "string_payload"}.
+Format your output as a single JSON object: {"action":"tool_name", "payload":{...args} or "string_payload"}.
 Only output JSON.`;
 
   let messages = [
