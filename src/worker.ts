@@ -9,14 +9,14 @@ let db: PGlite;
 let embed: (text: string) => Promise<number[]>;
 let mcpClients: Map<string, Client> = new Map();
 
-async function init(modelId: string) {
-  self.postMessage({ type: 'PROGRESS', data: 'Waiting for DB lock...' });
-  return new Promise<void>((resolveInit, rejectInit) => {
+let dbReady = false;
+
+async function initPGlite(): Promise<PGlite> {
+  return new Promise<PGlite>((resolve, reject) => {
     navigator.locks.request('swap-core-db-lock', async (lock) => {
       try {
-        self.postMessage({ type: 'PROGRESS', data: 'Starting DB...' });
-        db = new PGlite('opfs://swap-core');
-        await db.exec(`
+        const database = new PGlite('opfs://swap-core');
+        await database.exec(`
           CREATE EXTENSION IF NOT EXISTS vector;
           CREATE TABLE IF NOT EXISTS memory (
             id SERIAL PRIMARY KEY,
@@ -27,29 +27,45 @@ async function init(modelId: string) {
             metadata JSONB
           );
         `);
-
-        self.postMessage({ type: 'PROGRESS', data: 'Loading embedder...' });
-        const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
-        embed = async (text: string) => {
-          const out = await pipe(text, { pooling: 'mean', normalize: true });
-          return Array.from(out.data);
-        };
-
-        self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
-        engine = await CreateMLCEngine(modelId, { 
-          initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
-        });
-        
-        self.postMessage({ type: 'READY' });
-        resolveInit();
+        resolve(database);
       } catch (err) {
-        rejectInit(err);
+        reject(err);
       }
       
       // Keep the lock active until the worker is terminated
       return new Promise<void>(() => {});
     });
   });
+}
+
+async function init(modelId: string) {
+  self.postMessage({ type: 'PROGRESS', data: 'Loading system...' });
+  
+  // Don't block on PGlite; init later
+  initPGlite().then(database => {
+    dbReady = true;
+    db = database;  // store for later use
+  }).catch(err => {
+    console.warn('PGlite init failed, memory search disabled', err);
+  });
+
+  try {
+    self.postMessage({ type: 'PROGRESS', data: 'Loading embedder...' });
+    const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+    embed = async (text: string) => {
+      const out = await pipe(text, { pooling: 'mean', normalize: true });
+      return Array.from(out.data);
+    };
+
+    self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
+    engine = await CreateMLCEngine(modelId, { 
+      initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
+    });
+    
+    self.postMessage({ type: 'READY' });
+  } catch (err) {
+    self.postMessage({ type: 'ERROR', data: String(err) });
+  }
 }
 
 async function syncMcp(urls: string[]) {
@@ -184,6 +200,7 @@ Only output JSON.`;
 
     let observation = '';
     if (act.action === 'search_memory') {
+      if (!dbReady) return self.postMessage({ type: 'DONE', data: 'Memory search is still warming up — please try again in a few seconds.' });
       const results = await search(typeof act.payload === 'string' ? act.payload : act.payload.query);
       observation = results.join('\n') || 'No memories found.';
     } else if (act.action === 'fetch_web') {
