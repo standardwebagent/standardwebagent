@@ -9,6 +9,8 @@ import { detectEngine, type EngineType } from './engineDetector';
 
 import { get, set } from 'idb-keyval';
 import { Virtuoso } from 'react-virtuoso';
+import WorkerWebGPU from './worker?worker';
+import WorkerWASM from './worker-wasm?worker';
 
 declare global {
   interface Window {
@@ -262,11 +264,8 @@ export default function App() {
 
     // Choose the right worker based on detected engine
     const activeEngine = engineType ?? engine;
-    const workerUrl = (activeEngine === 'webgpu')
-      ? new URL('./worker.ts', import.meta.url)
-      : new URL('./worker-wasm.ts', import.meta.url); // handles both wasm & future webnn
-
-    const worker = new Worker(workerUrl, { type: 'module' });
+    const WorkerConstructor = activeEngine === 'webgpu' ? WorkerWebGPU : WorkerWASM;
+    const worker = new WorkerConstructor();
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
