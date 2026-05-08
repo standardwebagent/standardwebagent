@@ -5,9 +5,21 @@ declare global {
   }
 }
 
-export type EngineType = 'webnn' | 'webgpu' | 'wasm'
+export type EngineType = 'webnn' | 'webgpu' | 'wasm' | 'gemini' | 'window.ai'
 
 export async function detectEngine(): Promise<EngineType> {
+  // 0. Try window.ai (Built-in Chrome AI)
+  if ('ai' in window && (window as any).ai?.languageModel) {
+    try {
+      const capabilities = await (window as any).ai.languageModel.capabilities();
+      if (capabilities.available !== 'no') {
+        return 'window.ai';
+      }
+    } catch {
+      // not available
+    }
+  }
+
   // 1. Try WebNN (most efficient – NPU)
   if ('ml' in navigator && (navigator.ml as any)?.createContext) {
     try {

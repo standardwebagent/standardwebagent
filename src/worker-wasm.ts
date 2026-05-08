@@ -45,7 +45,7 @@ function dotProduct(a: number[], b: number[]) {
 async function searchMemory(query: string): Promise<string> {
   const qVecRes = await embedder(query, { pooling: 'mean', normalize: true });
   const qVec = Array.from(qVecRes.data) as number[];
-  const chunks = await get('avery_chunks');
+  const chunks = await get('stan_chunks');
   if (!chunks || chunks.length === 0) return "I haven't been given any documents yet. Drop some files on me.";
   
   const scored = chunks.map((c: any) => ({
@@ -104,7 +104,7 @@ async function ingestFile(name: string, content: ArrayBuffer) {
     }
   }
 
-  const dbChunks = await get('avery_chunks') || [];
+  const dbChunks = await get('stan_chunks') || [];
   const fileId = crypto.randomUUID();
   let indexed = 0;
   
@@ -126,7 +126,7 @@ async function ingestFile(name: string, content: ArrayBuffer) {
     }
   }
   
-  await set('avery_chunks', dbChunks);
+  await set('stan_chunks', dbChunks);
   self.postMessage({ type: 'DONE', data: `Indexed ${chunks.length} chunks from ${name}` });
 }
 

@@ -7,10 +7,13 @@ import { get, set } from "idb-keyval";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerURL from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
 import mammoth from "mammoth";
+import { GoogleGenAI } from "@google/genai";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerURL;
 
 let engine: any;
+let isGeminiEngine = false;
+let ai: GoogleGenAI | null = null;
 let db: PGlite;
 let embed: (text: string) => Promise<number[]>;
 let mcpClients: Map<string, Client> = new Map();
@@ -44,7 +47,7 @@ async function initPGlite(): Promise<PGlite> {
   });
 }
 
-async function init(modelId: string) {
+async function init(modelId: string, engineType?: string, apiKey?: string) {
   self.postMessage({ type: 'PROGRESS', data: 'Loading system...' });
   
   // Don't block on PGlite; init later
@@ -63,6 +66,20 @@ async function init(modelId: string) {
       return Array.from(out.data);
     };
 
+    if (engineType === 'gemini') {
+      self.postMessage({ type: 'PROGRESS', data: `Loading Cloud AI (Gemini Flash)` });
+      // We don't instantiate MLC engine
+      isGeminiEngine = true;
+      try {
+        ai = new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY });
+      } catch (e) {
+        console.error("Gemini API missing key in env!");
+      }
+      self.postMessage({ type: 'READY' });
+      return;
+    }
+
+    isGeminiEngine = false;
     self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
     engine = await CreateMLCEngine(modelId, { 
       initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
@@ -185,8 +202,30 @@ Only output JSON.`;
   ];
 
   for (let i = 0; i < 15; i++) {
-    const resp = await engine.chat.completions.create({ messages, temperature: 0.2 });
-    const raw = resp.choices[0].message.content;
+    let raw = '';
+    try {
+      if (isGeminiEngine && ai) {
+        let contentStr = '';
+        for (const msg of messages) {
+            contentStr += `${msg.role.toUpperCase()}: ${msg.content}\n\n`;
+        }
+        const resp = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: contentStr,
+            config: {
+               temperature: 0.2
+            }
+        });
+        raw = resp.text || '';
+      } else {
+        const resp = await engine.chat.completions.create({ messages, temperature: 0.2 });
+        raw = resp.choices[0].message.content;
+      }
+    } catch (e: any) {
+      self.postMessage({ type: 'ERROR', data: 'Model inference failed: ' + String(e.message || e) });
+      return;
+    }
+
     let act;
     try { 
       act = JSON.parse(raw); 
@@ -260,16 +299,38 @@ function dotProduct(a: number[], b: number[]) {
 
 async function searchMemory(query: string): Promise<string> {
   const qVec = await embed(query);
-  const chunks = await get('avery_chunks');
-  if (!chunks || chunks.length === 0) return "I haven't been given any documents yet. Drop some files on me.";
   
-  const scored = chunks.map((c: any) => ({
-    ...c,
-    score: dotProduct(qVec, c.embedding)
-  }));
-  scored.sort((a: any, b: any) => b.score - a.score);
-  const top = scored.slice(0, 3);
-  return top.map((t: any) => `[From ${t.fileName}]: ${t.text}`).join('\n---\n');
+  // Search IndexedDB (files/documents)
+  const chunks = await get('stan_chunks');
+  let topFileChunks: string[] = [];
+  if (chunks && chunks.length > 0) {
+    const scored = chunks.map((c: any) => ({
+      ...c,
+      score: dotProduct(qVec, c.embedding)
+    }));
+    scored.sort((a: any, b: any) => b.score - a.score);
+    topFileChunks = scored.slice(0, 3).map((t: any) => `[From ${t.fileName}]: ${t.text}`);
+  }
+
+  // Search PGlite (conversation memory notes)
+  let topMemories: string[] = [];
+  if (dbReady && db) {
+    try {
+      const res = await db.query(
+        'SELECT content FROM memory WHERE role IN (\'user\', \'note\') ORDER BY embedding <-> $1::vector LIMIT 3', 
+        [JSON.stringify(qVec)]
+      );
+      topMemories = res.rows.map((r: any) => `[Conversation/Note]: ${r.content}`);
+    } catch (e) {
+      console.warn("PGlite search failed", e);
+    }
+  }
+
+  if (topFileChunks.length === 0 && topMemories.length === 0) {
+    return "I haven't been given any documents or saved any notes yet.";
+  }
+
+  return [...topFileChunks, ...topMemories].join('\n---\n');
 }
 
 async function ingestFile(name: string, content: ArrayBuffer) {
@@ -319,7 +380,7 @@ async function ingestFile(name: string, content: ArrayBuffer) {
     }
   }
 
-  const dbChunks = await get('avery_chunks') || [];
+  const dbChunks = await get('stan_chunks') || [];
   const fileId = crypto.randomUUID();
   let indexed = 0;
   
@@ -340,13 +401,13 @@ async function ingestFile(name: string, content: ArrayBuffer) {
     }
   }
   
-  await set('avery_chunks', dbChunks);
+  await set('stan_chunks', dbChunks);
   self.postMessage({ type: 'DONE', data: `Indexed ${chunks.length} chunks from ${name}` });
 }
 
 self.onmessage = async (e: MessageEvent) => {
   if (e.data.type === 'INIT') {
-    await init(e.data.modelId);
+    await init(e.data.modelId, e.data.engineType, e.data.apiKey);
   } else if (e.data.type === 'SYNC_MCP') {
     await syncMcp(e.data.payload);
   } else if (e.data.type === 'TASK') {

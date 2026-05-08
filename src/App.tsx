@@ -138,27 +138,38 @@ export default function App() {
 
   const [deviceTooWeak, setDeviceTooWeak] = useState<string | null>(null);
 
+  const [forceCloud, setForceCloud] = useState(() => {
+    const stored = localStorage.getItem('swap_force_cloud');
+    return stored === 'true'; // Allow manual force
+  });
+
   useEffect(() => {
     const init = async () => {
-      const detected = await detectEngine();
-      setEngine(detected);
+      let detected = await detectEngine();
       
       const mem = (navigator as any).deviceMemory;
       const cores = navigator.hardwareConcurrency;
-      if ((mem && mem < 2) || (cores && cores < 4)) {
-        setDeviceTooWeak(`Your device has ${mem || '?'}GB RAM and ${cores || '?'} cores. Stan requires at least 2GB RAM and 4 cores to run locally.`);
-        setStatus('Device not supported');
-        return;
+      const isWeak = ((mem && mem < 2) || (cores && cores < 4));
+      
+      // Force gemini if manually selected, weak device, or built in ai
+      if (forceCloud || isWeak || detected === 'window.ai') {
+        detected = 'gemini';
+        if (isWeak && !forceCloud) {
+             setForceCloud(true);
+             localStorage.setItem('swap_force_cloud', 'true');
+        }
       }
+      setEngine(detected);
       
       if (!modelLoadStarted) {
         setModelLoadStarted(true);
-        initWorker(STAN_MODEL_ID, detected);
+        // We pass process.env.GEMINI_API_KEY to the worker in case Vite doesn't replace it in worker context
+        initWorker(STAN_MODEL_ID, detected, typeof process !== 'undefined' && process.env ? process.env.GEMINI_API_KEY : undefined);
       }
     };
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [forceCloud]);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -217,12 +228,27 @@ export default function App() {
     }
   }, [messages, persistConversation]);
 
+  const [voiceFirst, setVoiceFirst] = useState(() => {
+    const stored = localStorage.getItem('swap_voice_first');
+    return stored ? stored === 'true' : true;
+  });
+  const [autoListen, setAutoListen] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+
   // Refs for closures
   const isVoiceEnabledRef = useRef(isVoiceEnabled);
+  const voiceFirstRef = useRef(voiceFirst);
+  const autoListenRef = useRef(autoListen);
   const isMountedRef = useRef(true);
   useEffect(() => {
     isVoiceEnabledRef.current = isVoiceEnabled;
   }, [isVoiceEnabled]);
+  useEffect(() => {
+    voiceFirstRef.current = voiceFirst;
+  }, [voiceFirst]);
+  useEffect(() => {
+    autoListenRef.current = autoListen;
+  }, [autoListen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -256,13 +282,6 @@ export default function App() {
       isMountedRef.current = false;
     };
   }, []);
-
-  const [voiceFirst, setVoiceFirst] = useState(() => {
-    const stored = localStorage.getItem('swap_voice_first');
-    return stored ? stored === 'true' : true;
-  });
-  const [autoListen, setAutoListen] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('swap_voice_first', String(voiceFirst));
@@ -302,7 +321,7 @@ export default function App() {
     }
   }, [mcpServers, isReady]);
 
-  const initWorker = useCallback((modelId: string, engineType?: EngineType | null) => {
+  const initWorker = useCallback((modelId: string, engineType?: EngineType | null, apiKey?: string) => {
     if (workerRef.current) {
       workerRef.current.terminate();
     }
@@ -419,10 +438,13 @@ export default function App() {
             if (textToSpeak) {
                const utterance = new SpeechSynthesisUtterance(textToSpeak);
                // Pause listening while speaking to avoid echoing self
-               const wasAutoListen = autoListen;
-               if (voiceFirst) setAutoListen(false);
+               const wasAutoListen = autoListenRef.current;
+               if (voiceFirstRef.current) setAutoListen(false);
                utterance.onend = () => {
-                 if (voiceFirst) setAutoListen(true);
+                 if (voiceFirstRef.current || wasAutoListen) setAutoListen(true);
+               };
+               utterance.onerror = () => {
+                 if (voiceFirstRef.current || wasAutoListen) setAutoListen(true);
                };
                window.speechSynthesis.speak(utterance);
             }
@@ -552,7 +574,7 @@ export default function App() {
       ]);
     };
 
-    worker.postMessage({ type: 'INIT', modelId, engineType: engineType || engine });
+    worker.postMessage({ type: 'INIT', modelId, engineType: engineType || engine, apiKey });
   }, [engine]);
 
   useEffect(() => {
@@ -567,8 +589,8 @@ export default function App() {
     initWorker(STAN_MODEL_ID);
   };
 
-  const handleSend = () => {
-    const text = inputValue.trim();
+  const handleSend = (overrideText?: string) => {
+    const text = (overrideText ?? inputValue).trim();
     if (!text || isProcessing || !isReady) return;
 
     setIsProcessing(true);
@@ -709,7 +731,11 @@ export default function App() {
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const text = event.results[0][0].transcript;
-      setInputValue(text);
+      if (voiceFirst) {
+        handleSend(text);
+      } else {
+        setInputValue(text);
+      }
     };
     recognition.onerror = () => setIsListening(false);
     recognition.onend = () => setIsListening(false);
@@ -864,7 +890,7 @@ export default function App() {
                 <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mb-6 border border-emerald-500/20">
                   <Loader2 size={32} className="text-emerald-400 animate-spin" />
                 </div>
-                <h2 className="text-xl font-semibold mb-2">Setting up your private AI…</h2>
+                <h2 className="text-xl font-semibold mb-2">{forceCloud ? 'Connecting to Free Cloud AI...' : 'Setting up your private AI…'}</h2>
                 <p className="text-sm text-white/50 mb-4">{status}</p>
                 {/* mini progress bar */}
                 <div className="w-full max-w-[200px] h-1.5 bg-white/10 rounded-full overflow-hidden mb-6">
@@ -1022,7 +1048,7 @@ export default function App() {
                </div>
                
               <button 
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={!isReady || isProcessing || !inputValue.trim()}
                 className="w-8 h-8 bg-white hover:bg-gray-200 text-black rounded-lg flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:bg-white/10 disabled:text-white transition-all ml-2"
                 aria-label="Send message"
@@ -1200,6 +1226,28 @@ export default function App() {
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   voiceFirst ? 'translate-x-6' : 'translate-x-1'
                 }`} />
+              </button>
+            </div>
+
+            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-white/90">Zero-RAM Engine (Free Cloud API)</span>
+                <span className="text-xs text-white/40">Use Google Gemini API to save RAM (100% Free)</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={forceCloud}
+                onClick={() => {
+                  const next = !forceCloud;
+                  setForceCloud(next);
+                  localStorage.setItem('swap_force_cloud', String(next));
+                  window.location.reload();
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  forceCloud ? 'bg-emerald-500' : 'bg-white/20'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${forceCloud ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
 
