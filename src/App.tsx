@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
-import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2, FileText } from 'lucide-react';
+import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2, FileText, BookOpen } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { detectEngine, type EngineType } from './engineDetector';
 
@@ -34,6 +34,12 @@ interface Message {
   isMarkdown: boolean;
   timestamp: string;
   action?: string; // Optional property for UI actions like retail worker
+}
+
+interface Skill {
+  id: string;
+  name: string;
+  prompt: string;
 }
 
 const MarkdownMessage = React.memo(({ text }: { text: string }) => {
@@ -100,6 +106,12 @@ const DEFAULT_PROMPT = `You are Stan, a personal AI assistant who runs entirely 
 - If a tool fails, explain what happened in plain language and suggest an alternative.
 - If the user's request is unclear, ask one clarifying question at a time.`;
 
+const DEFAULT_SKILLS: Skill[] = [
+  { id: '1', name: 'General Assistant', prompt: DEFAULT_PROMPT },
+  { id: '2', name: 'Lead Qualifier', prompt: "You are Stan, a lead qualifying assistant. Your goal is to gather the user's name, company size, and primary use case before continuing the conversation." },
+  { id: '3', name: 'Intake Assistant', prompt: "You are Stan, a client intake assistant. Collect the user's project requirements, timeline, and budget, then save them into your notes." }
+];
+
 const STAN_MODEL_ID = 'functiongemma-270m-it'
 const STAN_MODEL_NAME = 'FunctionGemma 270M'
 
@@ -114,6 +126,7 @@ export default function App() {
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadText, setDownloadText] = useState('');
@@ -165,6 +178,17 @@ export default function App() {
     }
     return stored || DEFAULT_PROMPT;
   });
+
+  const [skills, setSkills] = useState<Skill[]>(() => {
+    const stored = localStorage.getItem('swap_skills');
+    if (stored) return JSON.parse(stored);
+    return DEFAULT_SKILLS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('swap_skills', JSON.stringify(skills));
+  }, [skills]);
+
   const [mcpServers, setMcpServers] = useState<string[]>(() => {
     const stored = localStorage.getItem('swap_mcp_servers');
     return stored ? JSON.parse(stored) : [];
@@ -202,16 +226,21 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isSettingsOpen) {
-        setIsSettingsOpen(false);
-        localStorage.setItem('swap_prompt', systemPrompt);
+      if (e.key === 'Escape') {
+        if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+          localStorage.setItem('swap_prompt', systemPrompt);
+        }
+        if (isSkillsModalOpen) {
+          setIsSkillsModalOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isSettingsOpen, systemPrompt]);
+  }, [isSettingsOpen, isSkillsModalOpen, systemPrompt]);
 
   useEffect(() => {
     // Request persistent storage
@@ -775,7 +804,10 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors" aria-label="Open Settings">
+          <button onClick={() => setIsSkillsModalOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors flex items-center justify-center shrink-0 w-8 h-8" aria-label="Open Skills">
+            <BookOpen size={14} />
+          </button>
+          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors flex items-center justify-center shrink-0 w-8 h-8" aria-label="Open Settings">
             <Settings size={14} />
           </button>
         </div>
@@ -1004,6 +1036,106 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* Skills Modal */}
+      {isSkillsModalOpen && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsSkillsModalOpen(false);
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease]"
+        >
+          <div className="bg-[#0f111a] border border-white/10 w-full max-w-2xl rounded-3xl p-6 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between shrink-0 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <BookOpen size={16} className="text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold tracking-tight">Skills Library</h2>
+                  <p className="text-xs text-white/40 mt-0.5">Quickly change Stan's persona and instructions.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsSkillsModalOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {skills.map(skill => (
+                <div key={skill.id} className="bg-white/[0.03] border border-white/5 p-4 rounded-2xl flex flex-col gap-3 group relative overflow-hidden transition-all hover:bg-white/[0.05] hover:border-white/10">
+                  {/* Selected Indicator */}
+                  {systemPrompt === skill.prompt && (
+                    <div className="absolute top-0 right-0 p-4">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wider uppercase">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                        Active
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-start justify-between pr-24">
+                    <div>
+                      <h3 className="font-semibold text-white/90 text-sm">{skill.name}</h3>
+                      <p className="text-xs text-white/50 mt-1 line-clamp-2 leading-relaxed">{skill.prompt}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5 mt-1">
+                    <div className="flex items-center gap-2">
+                       {/* Prevent deleting default skills (1, 2, 3) */}
+                       {!['1','2','3'].includes(skill.id) && (
+                         <button 
+                           onClick={() => setSkills(skills.filter(s => s.id !== skill.id))}
+                           className="text-red-400/50 hover:text-red-400 hover:bg-red-400/10 p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-[11px] font-medium"
+                         >
+                           <Trash2 size={13} />
+                           Delete
+                         </button>
+                       )}
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setSystemPrompt(skill.prompt);
+                        localStorage.setItem('swap_prompt', skill.prompt);
+                        setIsSkillsModalOpen(false);
+                      }}
+                      disabled={systemPrompt === skill.prompt}
+                      className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/20 disabled:text-emerald-400/50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-all"
+                    >
+                      {systemPrompt === skill.prompt ? 'Activated' : 'Activate'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add New */}
+            <div className="mt-4 pt-4 border-t border-white/10 shrink-0">
+               <button 
+                 onClick={() => {
+                   const name = prompt("Enter a name for the new skill:");
+                   if (!name) return;
+                   const pr = prompt("Enter the system prompt instructions:");
+                   if (!pr) return;
+                   setSkills([...skills, { id: crypto.randomUUID(), name, prompt: pr }]);
+                 }}
+                 className="w-full py-3 flex items-center justify-center gap-2 text-sm font-medium text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 rounded-xl transition-colors border border-emerald-400/20"
+               >
+                 <Plus size={16} />
+                 Create Custom Skill
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       {isSettingsOpen && (
